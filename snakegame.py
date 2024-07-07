@@ -7,173 +7,235 @@ pygame.init()
 # Set up the game window
 width, height = 640, 480
 window = pygame.display.set_mode((width, height))
-pygame.display.set_caption("Snake Game")
+pygame.display.set_caption("Enhanced Snake Game")
 
 # Colors
 BLACK = (0, 0, 0)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 WHITE = (255, 255, 255)
+BLUE = (0, 0, 255)
 
 # Game settings
 clock = pygame.time.Clock()
-speed = 15
+cell_size = 20
+difficulty_speeds = {"Easy": 10, "Medium": 15, "Hard": 20}
 
-def reset_game():
-    global snake_pos, snake_body, snake_direction, change_to, food_pos, food_spawn, score
-    snake_pos = [100, 50]
-    snake_body = [[100, 50], [90, 50], [80, 50]]
-    snake_direction = 'RIGHT'
-    change_to = snake_direction
-    food_pos = [random.randrange(1, (width//10)) * 10,
-                random.randrange(1, (height//10)) * 10]
-    food_spawn = True
-    score = 0
+class Snake:
+    def __init__(self):
+        self.body = [[width // 2, height // 2]]
+        self.direction = "RIGHT"
+        self.color = GREEN
 
-# Initial reset
-reset_game()
+    def move(self):
+        head = self.body[0].copy()
+        if self.direction == "UP":
+            head[1] -= cell_size
+        elif self.direction == "DOWN":
+            head[1] += cell_size
+        elif self.direction == "LEFT":
+            head[0] -= cell_size
+        elif self.direction == "RIGHT":
+            head[0] += cell_size
+        self.body.insert(0, head)
 
-def show_score():
-    font = pygame.font.SysFont('times new roman', 20)
-    score_surface = font.render(f'Score: {score}', True, WHITE)
-    score_rect = score_surface.get_rect()
-    score_rect.topleft = (10, 10)
-    window.blit(score_surface, score_rect)
+    def grow(self):
+        self.body.append(self.body[-1])
 
-def welcome_screen():
-    window.fill(BLACK)
-    font = pygame.font.SysFont('times new roman', 40)
-    title = font.render('Welcome to Snake Game', True, GREEN)
-    title_rect = title.get_rect()
-    title_rect.midtop = (width/2, height/4)
-    window.blit(title, title_rect)
+    def draw(self, surface):
+        for segment in self.body:
+            pygame.draw.rect(surface, self.color, pygame.Rect(segment[0], segment[1], cell_size, cell_size))
 
-    font = pygame.font.SysFont('times new roman', 30)
-    instruction = font.render('Press SPACE to start', True, WHITE)
-    instruction_rect = instruction.get_rect()
-    instruction_rect.midtop = (width/2, height/2)
-    window.blit(instruction, instruction_rect)
+class Food:
+    def __init__(self):
+        self.position = self.randomize_position()
+        self.color = RED
 
-    pygame.display.flip()
+    def randomize_position(self):
+        return [random.randrange(0, width, cell_size), random.randrange(0, height, cell_size)]
 
-    waiting = True
-    while waiting:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    waiting = False
+    def draw(self, surface):
+        pygame.draw.rect(surface, self.color, pygame.Rect(self.position[0], self.position[1], cell_size, cell_size))
 
-def game_over():
-    window.fill(BLACK)
-    font = pygame.font.SysFont('times new roman', 40)
-    game_over_surface = font.render(f'Your Score is: {score}', True, RED)
-    game_over_rect = game_over_surface.get_rect()
-    game_over_rect.midtop = (width/2, height/4)
-    window.blit(game_over_surface, game_over_rect)
+class PowerUp:
+    def __init__(self):
+        self.position = self.randomize_position()
+        self.color = BLUE
+        self.active = False
+        self.timer = 0
 
-    font = pygame.font.SysFont('times new roman', 30)
-    instruction = font.render('Press SPACE to play again or ESC to quit', True, WHITE)
-    instruction_rect = instruction.get_rect()
-    instruction_rect.midtop = (width/2, height/2)
-    window.blit(instruction, instruction_rect)
+    def randomize_position(self):
+        return [random.randrange(0, width, cell_size), random.randrange(0, height, cell_size)]
 
-    pygame.display.flip()
+    def draw(self, surface):
+        if self.active:
+            pygame.draw.rect(surface, self.color, pygame.Rect(self.position[0], self.position[1], cell_size, cell_size))
 
-    waiting = True
-    while waiting:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    reset_game()
-                    return True
-                if event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    quit()
-    return False
+class Game:
+    def __init__(self):
+        self.snake = Snake()
+        self.food = Food()
+        self.power_up = PowerUp()
+        self.score = 0
+        self.high_score = self.load_high_score()
+        self.difficulty = "Medium"
+        self.game_over = False
 
-# Main game loop
-def game_loop():
-    global snake_direction, change_to, food_spawn, score, snake_pos, snake_body, food_pos
+    def load_high_score(self):
+        try:
+            with open("high_score.txt", "r") as f:
+                return int(f.read())
+        except FileNotFoundError:
+            return 0
 
-    while True:
+    def save_high_score(self):
+        with open("high_score.txt", "w") as f:
+            f.write(str(self.high_score))
+
+    def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 quit()
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP and snake_direction != 'DOWN':
-                    change_to = 'UP'
-                if event.key == pygame.K_DOWN and snake_direction != 'UP':
-                    change_to = 'DOWN'
-                if event.key == pygame.K_LEFT and snake_direction != 'RIGHT':
-                    change_to = 'LEFT'
-                if event.key == pygame.K_RIGHT and snake_direction != 'LEFT':
-                    change_to = 'RIGHT'
+                if event.key == pygame.K_UP and self.snake.direction != "DOWN":
+                    self.snake.direction = "UP"
+                elif event.key == pygame.K_DOWN and self.snake.direction != "UP":
+                    self.snake.direction = "DOWN"
+                elif event.key == pygame.K_LEFT and self.snake.direction != "RIGHT":
+                    self.snake.direction = "LEFT"
+                elif event.key == pygame.K_RIGHT and self.snake.direction != "LEFT":
+                    self.snake.direction = "RIGHT"
 
-        # Validate direction
-        if change_to == 'UP' and snake_direction != 'DOWN':
-            snake_direction = 'UP'
-        if change_to == 'DOWN' and snake_direction != 'UP':
-            snake_direction = 'DOWN'
-        if change_to == 'LEFT' and snake_direction != 'RIGHT':
-            snake_direction = 'LEFT'
-        if change_to == 'RIGHT' and snake_direction != 'LEFT':
-            snake_direction = 'RIGHT'
+    def update(self):
+        self.snake.move()
 
-        # Move the snake
-        if snake_direction == 'UP':
-            snake_pos[1] -= 10
-        if snake_direction == 'DOWN':
-            snake_pos[1] += 10
-        if snake_direction == 'LEFT':
-            snake_pos[0] -= 10
-        if snake_direction == 'RIGHT':
-            snake_pos[0] += 10
+        # Check collision with food
+        if self.snake.body[0] == self.food.position:
+            self.snake.grow()
+            self.food = Food()
+            self.score += 1
 
-        # Snake body growing mechanism
-        snake_body.insert(0, list(snake_pos))
-        if snake_pos[0] == food_pos[0] and snake_pos[1] == food_pos[1]:
-            score += 1
-            food_spawn = False
-        else:
-            snake_body.pop()
+            if self.score > self.high_score:
+                self.high_score = self.score
+                self.save_high_score()
 
-        # Spawn food
-        if not food_spawn:
-            food_pos = [random.randrange(1, (width//10)) * 10,
-                        random.randrange(1, (height//10)) * 10]
-        food_spawn = True
+            # Spawn power-up with 20% chance
+            if random.random() < 0.2:
+                self.power_up = PowerUp()
+                self.power_up.active = True
 
-        # Draw everything
+        # Check collision with power-up
+        if self.power_up.active and self.snake.body[0] == self.power_up.position:
+            self.score += 5
+            self.power_up.active = False
+            self.power_up.timer = pygame.time.get_ticks()
+
+        # Check if power-up effect should end
+        if not self.power_up.active and pygame.time.get_ticks() - self.power_up.timer > 5000:
+            self.power_up = PowerUp()
+
+        # Check collision with walls or self
+        if (self.snake.body[0][0] < 0 or self.snake.body[0][0] >= width or
+            self.snake.body[0][1] < 0 or self.snake.body[0][1] >= height or
+            self.snake.body[0] in self.snake.body[1:]):
+            self.game_over = True
+
+        # Remove tail if snake hasn't eaten
+        if len(self.snake.body) > self.score + 1:
+            self.snake.body.pop()
+
+    def draw(self):
         window.fill(BLACK)
-        for pos in snake_body:
-            pygame.draw.rect(window, GREEN, pygame.Rect(pos[0], pos[1], 10, 10))
-        pygame.draw.rect(window, RED, pygame.Rect(food_pos[0], food_pos[1], 10, 10))
-
-        show_score()
-
-        # Game Over conditions
-        if snake_pos[0] < 0 or snake_pos[0] > width-10:
-            return game_over()
-        if snake_pos[1] < 0 or snake_pos[1] > height-10:
-            return game_over()
-        for block in snake_body[1:]:
-            if snake_pos[0] == block[0] and snake_pos[1] == block[1]:
-                return game_over()
-
+        self.snake.draw(window)
+        self.food.draw(window)
+        if self.power_up.active:
+            self.power_up.draw(window)
+        self.draw_score()
         pygame.display.update()
-        clock.tick(speed)
 
-# Main game execution
-while True:
-    welcome_screen()
-    if not game_loop():
-        break
+    def draw_score(self):
+        font = pygame.font.SysFont('arial', 20)
+        score_surface = font.render(f'Score: {self.score}  High Score: {self.high_score}', True, WHITE)
+        score_rect = score_surface.get_rect()
+        score_rect.topleft = (10, 10)
+        window.blit(score_surface, score_rect)
 
-pygame.quit()
+    def show_game_over(self):
+        window.fill(BLACK)
+        font = pygame.font.SysFont('arial', 40)
+        game_over_surface = font.render(f'Game Over! Your Score: {self.score}', True, RED)
+        game_over_rect = game_over_surface.get_rect()
+        game_over_rect.midtop = (width // 2, height // 4)
+        window.blit(game_over_surface, game_over_rect)
+
+        font = pygame.font.SysFont('arial', 30)
+        instruction = font.render('Press SPACE to play again or ESC to quit', True, WHITE)
+        instruction_rect = instruction.get_rect()
+        instruction_rect.midtop = (width // 2, height // 2)
+        window.blit(instruction, instruction_rect)
+
+        pygame.display.flip()
+
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    quit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        waiting = False
+                    if event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        quit()
+
+    def show_difficulty_selection(self):
+        window.fill(BLACK)
+        font = pygame.font.SysFont('arial', 40)
+        title = font.render('Select Difficulty', True, WHITE)
+        title_rect = title.get_rect()
+        title_rect.midtop = (width // 2, height // 4)
+        window.blit(title, title_rect)
+
+        difficulties = list(difficulty_speeds.keys())
+        for i, diff in enumerate(difficulties):
+            font = pygame.font.SysFont('arial', 30)
+            diff_surface = font.render(f"{i+1}. {diff}", True, WHITE)
+            diff_rect = diff_surface.get_rect()
+            diff_rect.midtop = (width // 2, height // 2 + i * 50)
+            window.blit(diff_surface, diff_rect)
+
+        pygame.display.flip()
+
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    quit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_1:
+                        self.difficulty = "Easy"
+                        waiting = False
+                    elif event.key == pygame.K_2:
+                        self.difficulty = "Medium"
+                        waiting = False
+                    elif event.key == pygame.K_3:
+                        self.difficulty = "Hard"
+                        waiting = False
+
+    def run(self):
+        self.show_difficulty_selection()
+        while not self.game_over:
+            self.handle_events()
+            self.update()
+            self.draw()
+            clock.tick(difficulty_speeds[self.difficulty])
+
+        self.show_game_over()
+
+if __name__ == "__main__":
+    while True:
+        game = Game()
+        game.run()
